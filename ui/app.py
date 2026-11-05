@@ -3,6 +3,7 @@
 import os
 
 import httpx
+import pandas as pd
 import streamlit as st
 
 # Dans docker compose, l'API est joignable par le NOM de son service (cf. .env)
@@ -53,3 +54,44 @@ if st.button("Analyser", type="primary"):
         scores = dict(sorted(resultat["scores_etoiles"].items()))
         st.bar_chart(scores)
         st.caption(f"Temps de réponse de l'API : {resultat['latence_ms']:.0f} ms")
+
+st.divider()
+st.subheader("Analyser un lot d'avis (CSV)")
+st.caption("Le fichier doit contenir une colonne `texte` (sinon la 1ʳᵉ colonne est utilisée).")
+
+fichier = st.file_uploader("Fichier CSV", type="csv")
+
+if fichier is not None and st.button("Analyser le lot", type="primary"):
+    donnees = pd.read_csv(fichier)
+    colonne = "texte" if "texte" in donnees.columns else donnees.columns[0]
+    textes = donnees[colonne].dropna().astype(str).str.strip()
+    textes = [t for t in textes if t]
+
+    if not textes:
+        st.warning("Aucun avis exploitable dans ce fichier.")
+        st.stop()
+
+    try:
+        with st.spinner(f"Analyse de {len(textes)} avis…"):
+            response = httpx.post(f"{API_URL}/predict/batch", json={"avis": textes}, timeout=60)
+    except httpx.ConnectError:
+        st.error("Le service d'analyse est indisponible.")
+        st.stop()
+    except httpx.TimeoutException:
+        st.error("Le service met trop de temps à répondre.")
+        st.stop()
+
+    if response.status_code == 422:
+        st.warning("Le fichier contient un avis vide ou trop long (max 2 000 caractères), ou plus de 200 lignes.")
+        st.stop()
+    elif response.status_code != 200:
+        st.error("Une erreur est survenue, réessayez.")
+        st.stop()
+
+    lot = response.json()
+
+    st.write(f"**{lot['total']} avis analysés**")
+    st.bar_chart(lot["repartition"])
+
+    tableau = pd.DataFrame(lot["resultats"])[["texte", "sentiment"]]
+    st.dataframe(tableau, use_container_width=True)
