@@ -1,0 +1,300 @@
+{
+  "info": {
+    "name": "Escale Atlantique — Sentiment des avis clients",
+    "description": "Collection de test de l'API /predict et /predict/batch, avec des cas limites : texte vide, texte trop long, emojis, ironie.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" }
+  ],
+  "item": [
+    {
+      "name": "Santé",
+      "item": [
+        {
+          "name": "GET /health — modèle chargé",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('modèle chargé', () => pm.response.json().model_loaded === true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /info",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/info"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "/predict — cas limites",
+      "item": [
+        {
+          "name": "Texte vide → 422 attendu",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"\"\n}"
+            },
+            "url": "{{base_url}}/predict"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Texte espaces seuls → 422 attendu",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"     \"\n}"
+            },
+            "url": "{{base_url}}/predict"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Texte trop long (>2000 car.) → 422 attendu",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"{{texte_2001_caracteres}}\"\n}"
+            },
+            "url": "{{base_url}}/predict"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('texte_2001_caracteres', 'a'.repeat(2001));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Emojis — 200 attendu, sentiment à vérifier",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Vue mer depuis la chambre 😍 coucher de soleil inoubliable, on recommande ! 🌅✨\"\n}"
+            },
+            "url": "{{base_url}}/predict"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('sentiment positif (les emojis ne doivent pas casser le texte)', () => pm.response.json().sentiment === 'positif');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ironie — 200 attendu, erreur connue du modèle",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Bravo pour l'insonorisation : j'ai pu suivre en direct toute la soirée de mes voisins jusqu'à 3h du matin. Merci pour l'expérience.\"\n}"
+            },
+            "url": "{{base_url}}/predict"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK (la requête réussit même si la classe est fausse)', () => pm.response.to.have.status(200));",
+                  "console.log('Avis négatif ironique, souvent classé positif à tort — cf. analyse_erreurs.md : ' + pm.response.json().sentiment);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Négation (double négation) — 200 attendu, erreur connue du modèle",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Pas une seule fausse note, on ne pouvait pas rêver mieux.\"\n}"
+            },
+            "url": "{{base_url}}/predict"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK (la requête réussit même si la classe est fausse)', () => pm.response.to.have.status(200));",
+                  "console.log('Avis positif à double négation, souvent classé négatif à tort — cf. analyse_erreurs.md : ' + pm.response.json().sentiment);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Champ text absent → 422 attendu",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{base_url}}/predict"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "/predict/batch",
+      "item": [
+        {
+          "name": "Lot valide (3 avis) → 200 attendu",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"avis\": [\n    \"Séjour parfait, personnel adorable !\",\n    \"Chambre sale, serviettes tachées.\",\n    \"Correct pour une nuit d'étape, rien d'exceptionnel.\"\n  ]\n}"
+            },
+            "url": "{{base_url}}/predict/batch"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('3 résultats, répartition cohérente', () => {",
+                  "  const corps = pm.response.json();",
+                  "  pm.expect(corps.total).to.eql(3);",
+                  "  pm.expect(corps.resultats.length).to.eql(3);",
+                  "  const somme = Object.values(corps.repartition).reduce((a, b) => a + b, 0);",
+                  "  pm.expect(somme).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lot vide → 422 attendu",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"avis\": []\n}"
+            },
+            "url": "{{base_url}}/predict/batch"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Un avis vide dans le lot → 422 attendu",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"avis\": [\"Très bien\", \"\"]\n}"
+            },
+            "url": "{{base_url}}/predict/batch"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
