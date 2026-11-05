@@ -8,7 +8,13 @@ from loguru import logger
 
 from app import journal
 from app.inference import load_pipeline, predict_sentiment
-from app.schemas import LogsOut, ReviewIn, SentimentOut
+from app.schemas import (
+    LogsOut,
+    ReviewBatchIn,
+    ReviewIn,
+    SentimentBatchOut,
+    SentimentOut,
+)
 
 MODEL_NAME = os.getenv("MODEL_NAME", "cmarkea/distilcamembert-base-sentiment")
 
@@ -60,6 +66,24 @@ def predict(review: ReviewIn) -> SentimentOut:
     resultat = predict_sentiment(classifier, review.text)
     journal.tracer(review.text, resultat["sentiment"], resultat["latence_ms"])
     return SentimentOut(**resultat)
+
+
+@app.post("/predict/batch", response_model=SentimentBatchOut)
+def predict_batch(batch: ReviewBatchIn) -> SentimentBatchOut:
+    """Analyse un lot d'avis clients (ex. import CSV depuis l'interface)."""
+    classifier = state.get("classifier")
+    if classifier is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+
+    repartition = {"négatif": 0, "neutre": 0, "positif": 0}
+    resultats = []
+    for texte in batch.avis:
+        resultat = predict_sentiment(classifier, texte)
+        journal.tracer(texte, resultat["sentiment"], resultat["latence_ms"])
+        repartition[resultat["sentiment"]] += 1
+        resultats.append({"texte": texte, **resultat})
+
+    return SentimentBatchOut(total=len(resultats), resultats=resultats, repartition=repartition)
 
 
 @app.get("/logs", response_model=LogsOut)
