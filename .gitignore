@@ -18,6 +18,9 @@ venv/
 .vscode/
 .idea/
 
+# Notes d'apprentissage personnelles, pas destinées au dépôt
+work.md
+
 # Système
 .DS_Store
 Thumbs.db
