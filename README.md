@@ -8,18 +8,19 @@ Le service qualité d'Escale Atlantique reçoit plusieurs centaines d'avis clien
 
 ## Architecture
 
-```
-┌─────────────┐   HTTP :8501    ┌──────────────────┐   HTTP :8000    ┌───────────────────────┐
-│  Navigateur │ ───────────────▶│  ui (Streamlit)   │────────────────▶│  api (FastAPI)        │
-└─────────────┘                 │  interface de     │  POST /predict  │  /health  /info       │
-                                 │  démonstration    │                 │  /predict /logs       │
-                                 └──────────────────┘                 └──────────┬────────────┘
-                                                                                  │ pipeline Hugging Face
-                                                                                  ▼
-                                                              cmarkea/distilcamembert-base-sentiment
-                                                              (sortie : 1 à 5 étoiles)
+```mermaid
+flowchart LR
+    Navigateur -->|HTTP :8501| UI["ui (Streamlit)<br/>interface de démonstration"]
+    UI -->|"POST /predict, /predict/batch"| API["api (FastAPI)<br/>/health /info /predict /predict/batch /logs"]
+    API -->|pipeline Hugging Face| Modele["cmarkea/distilcamembert-base-sentiment<br/>(sortie : 1 à 5 étoiles)"]
 
-Réseau docker compose "fastia" — volumes : ./models (cache du modèle HF), ./logs (logs API)
+    subgraph fastia["Docker compose - réseau fastia"]
+        UI
+        API
+    end
+
+    API -.->|volume| Models[("./models<br/>cache du modèle HF")]
+    API -.->|volume| Logs[("./logs<br/>logs API")]
 ```
 
 - **`api`** (FastAPI) : charge le modèle une seule fois au démarrage (`lifespan`), expose `/predict` (texte → sentiment), `/health`, `/info`, `/logs` (traçabilité des dernières prédictions).
@@ -54,12 +55,20 @@ logs/                  # logs de l'API (volume, non versionné, créé au lancem
 
 ## Installation et lancement
 
+### Prérequis
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installé et démarré (inclut `docker compose`).
+- Les ports **8000** (API) et **8501** (interface) libres sur la machine.
+- Une connexion internet au premier lancement (téléchargement du modèle, ≈ 270 Mo) — tout fonctionne hors ligne ensuite.
+
+### Avec Docker (recommandé)
+
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-⏳ Le premier lancement télécharge le modèle (≈ 270 Mo) : compte quelques minutes. Les lancements suivants sont rapides, et tout fonctionne hors ligne.
+⏳ Le premier lancement télécharge le modèle : compte quelques minutes. Les lancements suivants sont rapides.
 
 - API : http://localhost:8000/health et http://localhost:8000/docs
 - Interface : http://localhost:8501
@@ -68,13 +77,31 @@ docker compose up --build
 
 ### Sans Docker (dépannage)
 
-Si Docker n'est pas disponible, l'API tourne aussi directement avec Python 3.12 (dépendances dans `api/requirements.txt`, torch CPU inclus) :
+Si Docker n'est pas disponible, chaque service tourne aussi directement en Python 3.12 — **dans deux terminaux séparés**, l'API doit être lancée avant l'UI.
+
+**API** (dépendances dans `api/requirements.txt`, torch CPU inclus) :
 
 ```bash
 cd api
 pip install -r requirements.txt
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+**UI** (dépendances dans `ui/requirements.txt`) :
+
+```bash
+cd ui
+pip install -r requirements.txt
+API_URL=http://127.0.0.1:8000 streamlit run app.py   # bash/macOS/Linux
+```
+
+```powershell
+cd ui
+pip install -r requirements.txt
+$env:API_URL = "http://127.0.0.1:8000"; streamlit run app.py   # PowerShell
+```
+
+⚠️ Sans Docker, `API_URL` doit pointer sur `http://127.0.0.1:8000` (pas `http://api:8000`, qui n'existe que dans le réseau docker compose) — c'est d'ailleurs déjà la valeur par défaut dans `ui/app.py` si la variable n'est pas définie, donc cette étape est optionnelle en local.
 
 ### Tests
 
