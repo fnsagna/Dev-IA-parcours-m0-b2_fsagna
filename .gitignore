@@ -20,6 +20,7 @@ venv/
 
 # Notes d'apprentissage personnelles, pas destinées au dépôt
 work.md
+rapport_criteres_performance.md
 
 # Système
 .DS_Store
