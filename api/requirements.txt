@@ -15,3 +15,6 @@ protobuf==5.29.3
 # Tests
 pytest==8.3.5
 httpx==0.28.1
+
+# Évaluation (scripts/evaluer.py, appelle l'API déjà lancée)
+requests==2.32.3
