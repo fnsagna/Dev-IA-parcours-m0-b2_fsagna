@@ -53,12 +53,20 @@ def afficher_matrice(titre, m):
         print(ligne)
 
 
+def afficher_erreurs(titre, resultats):
+    """Liste les avis mal classés : id, vrai, prédit, texte (cité pour analyse, cf. tâche 7)."""
+    erreurs = [r for r in resultats if r["vrai"] != r["predit"]]
+    print(f"\n{titre} ({len(erreurs)} avis mal classés)")
+    for e in erreurs:
+        print(f"  id={e['id']} vrai={e['vrai']} prédit={e['predit']} — « {e['texte']} »")
+
+
 def main():
     with open(CSV_PATH, encoding="utf-8") as f:
         avis = list(csv.DictReader(f))
 
-    resultats_api = []  # (vrai, predit_actuel)
-    resultats_alt = []  # (vrai, predit_alt)
+    resultats_api = []  # dicts: id, texte, vrai, predit
+    resultats_alt = []
 
     for row in avis:
         texte = row["texte"]
@@ -71,29 +79,35 @@ def main():
         note = note_attendue(data["scores_etoiles"])
         predit_alt = convertir(note, SEUIL_NEG_ALT, SEUIL_POS_ALT)
 
-        resultats_api.append((vrai, predit_actuel))
-        resultats_alt.append((vrai, predit_alt))
+        resultats_api.append({"id": row["id"], "texte": texte, "vrai": vrai, "predit": predit_actuel})
+        resultats_alt.append({"id": row["id"], "texte": texte, "vrai": vrai, "predit": predit_alt})
 
     n = len(avis)
 
     # --- Methode 1 : conversion actuelle de l'API (seuils 2.8 / 3.6) ---
-    bons_api = sum(1 for v, p in resultats_api if v == p)
-    m_api = matrice_confusion(resultats_api)
+    paires_api = [(r["vrai"], r["predit"]) for r in resultats_api]
+    bons_api = sum(1 for v, p in paires_api if v == p)
+    m_api = matrice_confusion(paires_api)
     afficher_matrice(f"Matrice de confusion — conversion ACTUELLE (seuils {SEUIL_NEG_ACTUEL}/{SEUIL_POS_ACTUEL})", m_api)
     print(f"Bien classés : {bons_api}/{n} ({bons_api/n:.1%})")
 
-    rates_api = sum(1 for v, p in resultats_api if v == "négatif" and p != "négatif")
-    total_neg = sum(1 for v, _ in resultats_api if v == "négatif")
+    rates_api = sum(1 for v, p in paires_api if v == "négatif" and p != "négatif")
+    total_neg = sum(1 for v, _ in paires_api if v == "négatif")
     print(f"Avis négatifs ratés : {rates_api}/{total_neg}")
 
+    afficher_erreurs("Avis mal classés — conversion ACTUELLE", resultats_api)
+
     # --- Methode 2 : conversion alternative (seuils symetriques 2.5 / 3.5) ---
-    bons_alt = sum(1 for v, p in resultats_alt if v == p)
-    m_alt = matrice_confusion(resultats_alt)
+    paires_alt = [(r["vrai"], r["predit"]) for r in resultats_alt]
+    bons_alt = sum(1 for v, p in paires_alt if v == p)
+    m_alt = matrice_confusion(paires_alt)
     afficher_matrice(f"Matrice de confusion — conversion ALTERNATIVE (seuils {SEUIL_NEG_ALT}/{SEUIL_POS_ALT})", m_alt)
     print(f"Bien classés : {bons_alt}/{n} ({bons_alt/n:.1%})")
 
-    rates_alt = sum(1 for v, p in resultats_alt if v == "négatif" and p != "négatif")
+    rates_alt = sum(1 for v, p in paires_alt if v == "négatif" and p != "négatif")
     print(f"Avis négatifs ratés : {rates_alt}/{total_neg}")
+
+    afficher_erreurs("Avis mal classés — conversion ALTERNATIVE", resultats_alt)
 
     # --- Comparaison finale ---
     print("\n--- Comparaison ---")
