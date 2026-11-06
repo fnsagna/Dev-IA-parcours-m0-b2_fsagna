@@ -6,6 +6,10 @@ import httpx
 import pandas as pd
 import streamlit as st
 
+import journal
+
+journal.configurer()
+
 # Dans docker compose, l'API est joignable par le NOM de son service (cf. .env)
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
@@ -32,21 +36,26 @@ if st.button("Analyser", type="primary"):
         with st.spinner("Analyse en cours…"):
             response = httpx.post(f"{API_URL}/predict", json={"text": text}, timeout=10)
     except httpx.ConnectError:
+        journal.tracer_erreur("predict", "service indisponible")
         st.error("Le service d'analyse est indisponible.")
         st.stop()
     except httpx.TimeoutException:
+        journal.tracer_erreur("predict", "timeout")
         st.error("Le service met trop de temps à répondre.")
         st.stop()
 
     if response.status_code == 422:
+        journal.tracer_erreur("predict", "422 entrée invalide")
         st.warning("L'avis doit contenir entre 1 et 2 000 caractères.")
         st.stop()
     elif response.status_code != 200:
+        journal.tracer_erreur("predict", f"statut {response.status_code}")
         st.error("Une erreur est survenue, réessayez.")
         st.stop()
 
     resultat = response.json()
     sentiment = resultat["sentiment"]
+    journal.tracer_predict(text, sentiment, resultat["latence_ms"])
     icone, niveau = SENTIMENT_STYLE[sentiment]
     getattr(st, niveau)(f"{icone} Sentiment : **{sentiment}**")
 
@@ -75,20 +84,26 @@ if fichier is not None and st.button("Analyser le lot", type="primary"):
         with st.spinner(f"Analyse de {len(textes)} avis…"):
             response = httpx.post(f"{API_URL}/predict/batch", json={"avis": textes}, timeout=60)
     except httpx.ConnectError:
+        journal.tracer_erreur("predict_batch", "service indisponible")
         st.error("Le service d'analyse est indisponible.")
         st.stop()
     except httpx.TimeoutException:
+        journal.tracer_erreur("predict_batch", "timeout")
         st.error("Le service met trop de temps à répondre.")
         st.stop()
 
     if response.status_code == 422:
+        journal.tracer_erreur("predict_batch", "422 entrée invalide")
         st.warning("Le fichier contient un avis vide ou trop long (max 2 000 caractères), ou plus de 200 lignes.")
         st.stop()
     elif response.status_code != 200:
+        journal.tracer_erreur("predict_batch", f"statut {response.status_code}")
         st.error("Une erreur est survenue, réessayez.")
         st.stop()
 
     lot = response.json()
+    latence_totale = sum(r["latence_ms"] for r in lot["resultats"])
+    journal.tracer_batch(lot["total"], lot["repartition"], latence_totale)
 
     st.write(f"**{lot['total']} avis analysés**")
     st.bar_chart(lot["repartition"])
