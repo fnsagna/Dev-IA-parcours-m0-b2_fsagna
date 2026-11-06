@@ -24,7 +24,7 @@ flowchart LR
 ```
 
 - **`api`** (FastAPI) : charge le modèle une seule fois au démarrage (`lifespan`), expose `/predict` (texte → sentiment), `/health`, `/info`, `/logs` (traçabilité des dernières prédictions).
-- **`ui`** (Streamlit) : interface de démonstration, appelle l'API via `API_URL`.
+- **`ui`** (Streamlit) : interface de démonstration, appelle l'API via `API_URL`, journalise chaque appel (succès et erreurs) dans `logs/ui.log`.
 - Le modèle est mis en cache sur le volume `./models` : téléchargé une fois, puis tout fonctionne hors ligne.
 
 ## Structure
@@ -43,6 +43,7 @@ api/
   Dockerfile
 ui/                    # service Streamlit
   app.py
+  journal.py           #   traçabilité des appels à l'API côté interface (logs/ui.log)
   Dockerfile
 data/
   avis_annotes.csv     # 30 avis annotés par l'équipe qualité
@@ -50,7 +51,7 @@ postman/
   escale_atlantique.postman_collection.json  # cas limites : vide, trop long, emojis, ironie
 analyse_erreurs.md     # analyse d'avis mal classés (tâche 7)
 models/                # cache du modèle Hugging Face (volume, non versionné)
-logs/                  # logs de l'API (volume, non versionné, créé au lancement)
+logs/                  # logs api.log + ui.log (volume, non versionné, créé au lancement)
 ```
 
 ## Installation et lancement
